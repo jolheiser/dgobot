@@ -28,11 +28,11 @@ var cmdGopher = &discordgo.ApplicationCommand{
 	Description: "Hear the call of the Gopher!",
 }
 
-func handleGopher(ds *discordgo.Session, ic *discordgo.InteractionCreate) {
+var gopherErr = fmt.Errorf("Looks like all gophers are asleep right now")
 
+func handleGopher(ds *discordgo.Session, ic *discordgo.InteractionCreate) (*discordgo.InteractionResponseData, error) {
 	if rand.Intn(15) <= 1 {
-		ds.ChannelMessageSend(ic.ChannelID, `https://www.youtube.com/watch?v=iay2wUY8uqA`)
-		return
+		return ContentResponse("https://www.youtube.com/watch?v=iay2wUY8uqA"), nil
 	}
 
 	// get channel
@@ -42,9 +42,8 @@ func handleGopher(ds *discordgo.Session, ic *discordgo.InteractionCreate) {
 		// Try fetching via REST API
 		c, err = ds.Channel(ic.ChannelID)
 		if err != nil {
-			lit.Error("getting channel, %s", err)
-			ds.ChannelMessageSend(ic.ChannelID, `Looks like all the Gophers are sleeping right now`)
-			return
+			lit.Error("getting channel, %v", err)
+			return nil, gopherErr
 		}
 	}
 
@@ -56,37 +55,35 @@ func handleGopher(ds *discordgo.Session, ic *discordgo.InteractionCreate) {
 		g, err = ds.Guild(ic.ChannelID)
 		if err != nil {
 			lit.Error("getting guild, %s", err)
-			ds.ChannelMessageSend(ic.ChannelID, `Looks like all the Gophers are sleeping right now`)
-			return
+			return nil, gopherErr
 		}
 	}
 
 	// Look for the message sender in that guild's current voice states.
 	for _, vs := range g.VoiceStates {
-
 		if vs.UserID == ic.Message.Author.ID {
-			err = playSound(ds, g.ID, vs.ChannelID)
-			if err != nil {
-				lit.Error("play sound, %s", err)
-				ds.ChannelMessageSend(ic.ChannelID, `Looks like all the Gophers are sleeping right now`)
-			}
-			return
+			// Call in goroutine to allow functon to return response
+			go func() {
+				err = playSound(ds, g.ID, vs.ChannelID)
+				if err != nil {
+					lit.Error("play sound, %s", err)
+				}
+			}()
+			return ContentResponse("Dispatching..."), nil
 		}
-
 	}
 
-	ds.ChannelMessageSend(ic.ChannelID, `Sorry, you must be in a voice channel to hear the mighty gopher.`)
+	return nil, fmt.Errorf("Sorry, you must be in avoice channel to hear the mighty gopher.")
 }
 
 var gopherlock sync.Mutex
 
 // playSound plays the current buffer to the provided channel.
 func playSound(s *discordgo.Session, guildID, channelID string) (err error) {
-
 	gopherlock.Lock()
 	defer gopherlock.Unlock()
 
-	var buffer = make([][]byte, 0)
+	buffer := make([][]byte, 0)
 	var opuslen int16
 
 	files, err := ioutil.ReadDir("sounds/")
