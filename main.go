@@ -40,6 +40,7 @@ func main() {
 
 	flag.Parse()
 	if Session.Token == "" {
+		flag.Usage()
 		log.Println("You must provide a Discord authentication token.")
 		return
 	}
@@ -50,6 +51,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("error opening connection to Discord: %v", err)
 	}
+
+	commands.LoadCommands(Session, false)
 
 	log.Println(`Now running. Press CTRL-C to exit.`)
 	sc := make(chan os.Signal, 1)

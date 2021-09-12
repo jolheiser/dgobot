@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"os"
 	"sync"
@@ -42,7 +41,7 @@ func handleGopher(ds *discordgo.Session, ic *discordgo.InteractionCreate) (*disc
 		// Try fetching via REST API
 		c, err = ds.Channel(ic.ChannelID)
 		if err != nil {
-			lit.Error("getting channel, %v", err)
+			lit.Error("gopher: getting channel: %v", err)
 			return nil, gopherErr
 		}
 	}
@@ -54,7 +53,7 @@ func handleGopher(ds *discordgo.Session, ic *discordgo.InteractionCreate) (*disc
 		// Try fetching via REST API
 		g, err = ds.Guild(ic.ChannelID)
 		if err != nil {
-			lit.Error("getting guild, %s", err)
+			lit.Error("gopher: getting guild: %s", err)
 			return nil, gopherErr
 		}
 	}
@@ -66,7 +65,7 @@ func handleGopher(ds *discordgo.Session, ic *discordgo.InteractionCreate) (*disc
 			go func() {
 				err = playSound(ds, g.ID, vs.ChannelID)
 				if err != nil {
-					lit.Error("play sound, %s", err)
+					lit.Error("gopher: playing sound: %s", err)
 				}
 			}()
 			return ContentResponse("Dispatching..."), nil
@@ -92,21 +91,19 @@ func playSound(s *discordgo.Session, guildID, channelID string) (err error) {
 	}
 
 	gopher := files[rand.Intn(len(files))]
-	log.Println("Playing", gopher.Name())
+	lit.Debug("Playing %s", gopher.Name())
 
 	// Join the provided voice channel.
 	vc, err := s.ChannelVoiceJoin(guildID, channelID, false, true)
 	defer vc.Disconnect()
 	if err != nil {
-		fmt.Println("Cannot join voice, ", err)
-		return err
+		return fmt.Errorf("could not join voice: %w", err)
 	}
 
 	// read the file
 	file, err := os.Open("sounds/" + gopher.Name())
 	if err != nil {
-		fmt.Printf("Error opening dca file %s, %s", file.Name(), err)
-		return err
+		return fmt.Errorf("could not open dca file %s: %v", file.Name(), err)
 	}
 
 	for {
@@ -123,27 +120,21 @@ func playSound(s *discordgo.Session, guildID, channelID string) (err error) {
 		}
 
 		if err != nil {
-			fmt.Println("Error reading from dca file :", err)
-			return err
+			return fmt.Errorf("could not read from dca file: %v", err)
 		}
 
 		if opuslen < 5 || opuslen > 500 {
-			log.Printf("Something wrong with opuslen : %d\n", opuslen)
-			return fmt.Errorf("bad size opuslen")
+			return fmt.Errorf("bad opuslen size: %v", opuslen)
 		}
 
 		// Read encoded pcm from dca file.
-		InBuf := make([]byte, opuslen)
-		err = binary.Read(file, binary.LittleEndian, &InBuf)
-
-		// Should not be any end of file errors
-		if err != nil {
-			fmt.Println("Error reading from dca file :", err)
-			return err
+		inBuf := make([]byte, opuslen)
+		if err = binary.Read(file, binary.LittleEndian, &inBuf); err != nil {
+			return fmt.Errorf("could not read from dca file: %v", err)
 		}
 
 		// Append encoded pcm data to the buffer.
-		buffer = append(buffer, InBuf)
+		buffer = append(buffer, inBuf)
 	}
 
 	time.Sleep(500 * time.Millisecond)

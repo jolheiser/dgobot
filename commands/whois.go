@@ -39,14 +39,15 @@ func handleWhois(ds *discordgo.Session, ic *discordgo.InteractionCreate) (*disco
 		lookupID = optionUser.ID
 	}
 
-	m, c, g, ok := memberChannelGuild(ds, lookupID, ic.ChannelID, ic.GuildID)
-	if !ok {
+	m, c, g, err := memberChannelGuild(ds, lookupID, ic.ChannelID, ic.GuildID)
+	if err != nil {
+		lit.Error("whois: %v", err)
 		return nil, fmt.Errorf("Sorry, I couldn't find any information to give you :(")
 	}
 
 	perms, err := ds.UserChannelPermissions(lookupID, ic.ChannelID)
 	if err != nil {
-		lit.Error("Could not get channel perms: %v", err)
+		lit.Error("whois: channel perms: %v", err)
 		return nil, fmt.Errorf("An error occurred.")
 	}
 
@@ -65,7 +66,7 @@ func handleWhois(ds *discordgo.Session, ic *discordgo.InteractionCreate) (*disco
 	for _, v := range m.Roles {
 		r, err := ds.State.Role(ic.GuildID, v)
 		if err != nil {
-			lit.Error("error fetching role %s: %v\n", v, err)
+			lit.Error("whois: fetching role %s: %v\n", v, err)
 			continue
 		}
 		roles = roles + delim + r.Name + " (" + r.ID + ")"
@@ -83,7 +84,7 @@ func handleWhois(ds *discordgo.Session, ic *discordgo.InteractionCreate) (*disco
 	if string(m.JoinedAt) != "" {
 		jd, err := time.Parse(time.RFC3339, string(m.JoinedAt))
 		if err != nil {
-			lit.Error("error parsing date: %v", err)
+			lit.Error("whois: parsing date: %v", err)
 		} else {
 			js = fmt.Sprintf("<t:%d:R>", jd.Unix())
 		}
@@ -105,25 +106,21 @@ func handleWhois(ds *discordgo.Session, ic *discordgo.InteractionCreate) (*disco
 	return EmbedResponse(embed), nil
 }
 
-func memberChannelGuild(ds *discordgo.Session, memberID, channelID, guildID string) (*discordgo.Member, *discordgo.Channel, *discordgo.Guild, bool) {
+func memberChannelGuild(ds *discordgo.Session, memberID, channelID, guildID string) (*discordgo.Member, *discordgo.Channel, *discordgo.Guild, error) {
 	m, err := ds.State.Member(guildID, memberID)
 	if err != nil {
-		lit.Error("error getting Member from state: %v", err)
-		return nil, nil, nil, false
+		return nil, nil, nil, fmt.Errorf("could not get member from state: %v", err)
 	}
-	fmt.Printf("Member: %#v\nUser: %#v\n", m, m.User)
 
 	c, err := ds.State.Channel(channelID)
 	if err != nil {
-		lit.Error("error getting Channel from state: %v", err)
-		return nil, nil, nil, false
+		return nil, nil, nil, fmt.Errorf("could not get channel from state: %v", err)
 	}
 
 	g, err := ds.State.Guild(guildID)
 	if err != nil {
-		lit.Error("error getting Guild from state: %v", err)
-		return nil, nil, nil, false
+		return nil, nil, nil, fmt.Errorf("could not get guild from state: %v", err)
 	}
 
-	return m, c, g, true
+	return m, c, g, nil
 }

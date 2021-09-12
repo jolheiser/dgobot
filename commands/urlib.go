@@ -131,37 +131,36 @@ func (u *URLib) Remove(url string) bool {
 func (u *URLib) Save() error {
 	u.mx.Lock()
 	defer u.mx.Unlock()
+
 	lit.Debug("Saving repository...")
 	data, err := json.MarshalIndent(u.resource, "", "\t")
 	if err != nil {
-		return fmt.Errorf("unable to marshal urllib: %v", err)
+		return fmt.Errorf("marshalling urllib: %v", err)
 	}
 
 	if err := os.WriteFile(u.fileName, data, os.ModePerm); err != nil {
-		return fmt.Errorf("error saving %s. %v", u.fileName, err)
+		return fmt.Errorf("saving %s: %v", u.fileName, err)
 	}
 
 	return nil
 }
 
-func LoadURLib(fileName string) (*URLib, error) {
-	data, err := os.ReadFile(fileName)
+func LoadURLib(path string) (*URLib, error) {
+	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("error reading %s: %v", fileName, err)
+		return nil, err
 	}
 
 	var urlib *URLib
-	err = json.Unmarshal(data, &urlib)
-	if err != nil {
-		lit.Error("error unmarshalling urlib:", err)
+	if err = json.NewDecoder(f).Decode(&urlib); err != nil {
+		return nil, fmt.Errorf("could not unmarshal %s: %v", path, err)
 	}
 
 	for _, ur := range urlib.resource {
 		for _, k := range ur.Keywords {
-			kws, ok := urlib.keyword[k]
-			if !ok {
-				kws = []*UResource{}
-			}
+			// nil slice is okay
+			kws := urlib.keyword[k]
+
 			kws = append(kws, ur)
 			urlib.keyword[k] = kws
 		}
@@ -176,7 +175,7 @@ func (u *URLib) handleURL(ds *discordgo.Session, ic *discordgo.InteractionCreate
 	// Check if we have this keyword...
 	urs, ok := u.keyword[arg]
 	if !ok {
-		return nil, fmt.Errorf("No results for keyword `%s`", arg)
+		return nil, fmt.Errorf("No results for keyword `%s`.", arg)
 	}
 
 	var msg string
@@ -208,14 +207,14 @@ func (u *URLib) handleURLib(ds *discordgo.Session, ic *discordgo.InteractionCrea
 	case "list":
 		return u.handleURLibList(ds, ic)
 	}
-	return nil, fmt.Errorf("Unknown option: `%s`.", cmd)
+	return nil, fmt.Errorf("Invalid option: `%s`.", cmd)
 }
 
 func (u *URLib) handleURLibAdd(ds *discordgo.Session, ic *discordgo.InteractionCreate) (*discordgo.InteractionResponseData, error) {
 	ur := ic.ApplicationCommandData().Options[0].Options[0].StringValue()
 	urp, err := url.Parse(ur)
 	if err != nil {
-		lit.Error("URL parsing: %v", err)
+		lit.Error("urlib(add): parsing URL: %v", err)
 		return nil, fmt.Errorf("Could not add: invalid URL provided.")
 	}
 
@@ -233,7 +232,7 @@ func (u *URLib) handleURLibAdd(ds *discordgo.Session, ic *discordgo.InteractionC
 	})
 
 	if err := u.Save(); err != nil {
-		lit.Error("Could not save URL: %v", err)
+		lit.Error("urlib(add): saving: %v", err)
 		return nil, fmt.Errorf("Could not add: unable to save.")
 	}
 
@@ -248,7 +247,7 @@ func (u *URLib) handleURLibRemove(ds *discordgo.Session, ic *discordgo.Interacti
 	}
 
 	if err := u.Save(); err != nil {
-		lit.Error("Could not save URL: %v", err)
+		lit.Error("urlib(rm): saving url: %v", err)
 		return nil, fmt.Errorf("Could not remove: unable to save.")
 	}
 
